@@ -11,6 +11,14 @@
   },
   "feeds": [
     {
+      "name": "Awin (todas mis tiendas aprobadas)",
+      "type": "awin_auto",
+      "enabled": true,
+      "api_key_env": "AWIN_API_KEY",
+      "language": "es",
+      "region": "ES"
+    },
+    {
       "store": "PcComponentes",
       "enabled": false,
       "source": "feeds/ejemplo_pccomponentes.csv",
@@ -27,19 +35,6 @@
       "store": "MediaMarkt",
       "enabled": false,
       "source": "feeds/ejemplo_mediamarkt.csv",
-      "columns": {
-        "id": "aw_product_id",
-        "name": "product_name",
-        "price": "search_price",
-        "url": "aw_deep_link",
-        "image": "merchant_image_url",
-        "stock": "in_stock"
-      }
-    },
-    {
-      "store": "El Corte Inglés",
-      "enabled": false,
-      "source": "https://productdata.awin.com/datafeed/download/apikey/TU_API_KEY/language/es/fid/ID_FEED/columns/aw_deep_link,product_name,aw_product_id,merchant_image_url,search_price,in_stock/format/csv/delimiter/%2C/compression/gzip/",
       "columns": {
         "id": "aw_product_id",
         "name": "product_name",

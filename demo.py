@@ -46,7 +46,7 @@ def main():
     # La demo usa sus propios archivos para no mezclarse con los datos reales
     cfg["db_path"] = "demo.db"
     cfg["output_json"] = "demo_deals.json"
-    cfg["feeds"] = [dict(f, enabled=True) for f in cfg["feeds"] if f["source"].startswith("feeds/ejemplo_")]
+    cfg["feeds"] = [dict(f, enabled=True) for f in cfg["feeds"] if f.get("source", "").startswith("feeds/ejemplo_")]
     db_path = os.path.join(BASE, cfg["db_path"])
     if os.path.exists(db_path):
         os.remove(db_path)

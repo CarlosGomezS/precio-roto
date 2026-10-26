@@ -81,24 +81,35 @@ def to_bool(value):
 
 
 # -------------------------------------------------------------- lectura feed
-def read_feed(feed):
-    """Devuelve una lista de dicts normalizados: id, name, price, url, stock, image."""
-    src = feed["source"]
+class SkipFeed(Exception):
+    """El feed no se puede leer todavía (por ejemplo, falta la clave). No es un error."""
+
+
+def fetch_text(src, encoding="utf-8"):
     if src.startswith(("http://", "https://")):
         req = urllib.request.Request(src, headers={"User-Agent": "PrecioRoto/1.0"})
-        with urllib.request.urlopen(req, timeout=120) as r:
+        with urllib.request.urlopen(req, timeout=300) as r:
             raw = r.read()
     else:
         path = src if os.path.isabs(src) else os.path.join(BASE, src)
         with open(path, "rb") as f:
             raw = f.read()
-
     if raw[:2] == b"\x1f\x8b":  # gzip (habitual en Awin)
         raw = gzip.decompress(raw)
+    return raw.decode(encoding, errors="replace")
 
-    text = raw.decode(feed.get("encoding", "utf-8"), errors="replace")
+
+def read_feed(feed):
+    """Devuelve una lista de dicts normalizados: id, name, price, url, stock, image, store."""
+    if feed.get("type") == "awin_auto":
+        return read_awin_auto(feed)
+    return parse_csv(fetch_text(feed["source"], feed.get("encoding", "utf-8")), feed)
+
+
+def parse_csv(text, feed):
     delim = feed.get("delimiter") or csv.Sniffer().sniff(text[:5000], delimiters=",;|\t").delimiter
     cols = feed["columns"]
+    store_col = cols.get("store")
     items = []
     for row in csv.DictReader(io.StringIO(text), delimiter=delim):
         price = to_float(row.get(cols["price"]))
@@ -112,7 +123,68 @@ def read_feed(feed):
             "url": (row.get(cols.get("url", ""), "") or "").strip(),
             "image": (row.get(cols.get("image", ""), "") or "").strip(),
             "stock": to_bool(row.get(cols.get("stock", ""))),
+            "store": ((row.get(store_col) or "").strip() if store_col else "") or feed.get("store", "Tienda"),
         })
+    return items
+
+
+# ------------------------------------------------- Awin: todas tus tiendas
+AWIN_LIST = "https://productdata.awin.com/datafeed/list/apikey/{key}"
+AWIN_DOWNLOAD = (
+    "https://productdata.awin.com/datafeed/download/apikey/{key}/language/{lang}/fid/{fids}"
+    "/columns/aw_product_id,product_name,search_price,aw_deep_link,merchant_image_url,in_stock,merchant_name"
+    "/format/csv/delimiter/%2C/compression/gzip/adultcontent/0/"
+)
+AWIN_COLUMNS = {
+    "id": "aw_product_id", "name": "product_name", "price": "search_price", "url": "aw_deep_link",
+    "image": "merchant_image_url", "stock": "in_stock", "store": "merchant_name",
+}
+
+
+def _col(row, *names):
+    low = {k.strip().lower(): v for k, v in row.items() if k}
+    for n in names:
+        if n in low:
+            return (low[n] or "").strip()
+    return ""
+
+
+def read_awin_auto(feed):
+    """Lee los catálogos de TODAS las tiendas de Awin que te han aprobado.
+
+    La clave de API se lee de la variable de entorno AWIN_API_KEY (un secreto
+    de GitHub), nunca del archivo de configuración, para que no sea pública.
+    """
+    key = os.environ.get(feed.get("api_key_env", "AWIN_API_KEY"), "").strip()
+    if not key:
+        raise SkipFeed("falta la clave AWIN_API_KEY")
+    lang = feed.get("language", "es")
+    region = feed.get("region", "ES").upper()
+
+    listing = fetch_text(AWIN_LIST.format(key=key))
+    fids, names = [], []
+    for row in csv.DictReader(io.StringIO(listing)):
+        status = _col(row, "membership status", "membership_status").lower()
+        if status not in ("active", "joined", "approved"):
+            continue
+        feed_lang = _col(row, "language").lower()
+        feed_region = _col(row, "primary region", "primary_region").upper()
+        if feed_lang and not feed_lang.startswith(lang):
+            continue
+        if region and feed_region and feed_region != region:
+            continue
+        fid = _col(row, "feed id", "feed_id")
+        if fid:
+            fids.append(fid)
+            names.append(_col(row, "advertiser name", "advertiser_name"))
+    if not fids:
+        raise SkipFeed("ninguna tienda te ha aprobado todavía")
+    log(f"  Awin: {len(fids)} catálogos aprobados ({', '.join(sorted(set(names)))})")
+
+    items, cfg = [], dict(feed, columns=AWIN_COLUMNS, delimiter=",")
+    for i in range(0, len(fids), 10):  # de 10 en 10 para no pedir archivos enormes
+        url = AWIN_DOWNLOAD.format(key=key, lang=lang, fids=",".join(fids[i:i + 10]))
+        items += parse_csv(fetch_text(url), cfg)
     return items
 
 
@@ -164,13 +236,17 @@ def recently_alerted(db, store, pid, price, since_ts):
 # --------------------------------------------------------------- detección
 def process_feed(db, feed, cfg, now):
     t = cfg["thresholds"]
-    store = feed["store"]
     since_hist = now - t["history_days"] * 86400
     since_alert = now - t["realert_hours"] * 3600
     new_alerts = []
 
     items = read_feed(feed)
+    max_items = t.get("max_products", 0)
+    if max_items:
+        items = items[:max_items]
+    last = {}
     for it in items:
+        store = it["store"]
         ref = reference_price(db, store, it["id"], since_hist, t["min_history"])
 
         # 1) comparar ANTES de guardar el precio nuevo
@@ -183,8 +259,14 @@ def process_feed(db, feed, cfg, now):
                 )
                 new_alerts.append({**it, "store": store, "ref": ref, "pct": pct})
 
-        # 2) guardar lectura y ficha del producto
-        db.execute("INSERT INTO prices VALUES (?,?,?,?)", (store, it["id"], it["price"], now))
+        # 2) guardar lectura: solo si el precio cambió o hace más de 20 h de la última
+        #    (así la base de datos no crece sin control con catálogos grandes)
+        prev = db.execute(
+            "SELECT price, ts FROM prices WHERE store=? AND product_id=? ORDER BY ts DESC LIMIT 1",
+            (store, it["id"]),
+        ).fetchone()
+        if not prev or abs(prev[0] - it["price"]) > 0.005 or now - prev[1] > 20 * 3600:
+            db.execute("INSERT INTO prices VALUES (?,?,?,?)", (store, it["id"], it["price"], now))
         db.execute(
             """INSERT INTO products VALUES (?,?,?,?,?,?,?,?)
                ON CONFLICT(store, product_id) DO UPDATE SET
@@ -195,6 +277,15 @@ def process_feed(db, feed, cfg, now):
         )
     db.commit()
     return len(items), new_alerts
+
+
+def prune(db, cfg, now):
+    """Borra lecturas antiguas que ya no cuentan para el precio habitual."""
+    t = cfg["thresholds"]
+    db.execute("DELETE FROM prices WHERE ts < ?", (now - (t["history_days"] + 2) * 86400,))
+    db.execute("DELETE FROM alerts WHERE ts < ?", (now - 30 * 86400,))
+    db.execute("DELETE FROM products WHERE last_seen < ?", (now - 30 * 86400,))
+    db.commit()
 
 
 # ------------------------------------------------------------------ salidas
@@ -275,14 +366,18 @@ def run_once(cfg, dry_run, now=None):
     for feed in cfg["feeds"]:
         if not feed.get("enabled", True):
             continue
+        label = feed.get("store") or feed.get("name") or "feed"
         try:
             n, alerts = process_feed(db, feed, cfg, now)
-            log(f"{feed['store']}: {n} productos, {len(alerts)} alertas nuevas")
+            log(f"{label}: {n} productos, {len(alerts)} alertas nuevas")
             for a in alerts:
                 send_telegram(a, dry_run)
             total_alerts += len(alerts)
+        except SkipFeed as e:
+            log(f"{label}: en espera ({e})")
         except Exception as e:
-            log(f"{feed['store']}: ERROR al leer el feed → {e}")
+            log(f"{label}: ERROR al leer el feed → {e}")
+    prune(db, cfg, now)
     shown = export_json(db, cfg, now)
     db.close()
     log(f"Hecho. {total_alerts} alertas nuevas, {shown} en la web.")
