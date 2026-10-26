@@ -129,18 +129,6 @@ def parse_csv(text, feed):
 
 
 # ------------------------------------------------- Awin: todas tus tiendas
-AWIN_LIST = "https://productdata.awin.com/datafeed/list/apikey/{key}"
-AWIN_DOWNLOAD = (
-    "https://productdata.awin.com/datafeed/download/apikey/{key}/language/{lang}/fid/{fids}"
-    "/columns/aw_product_id,product_name,search_price,aw_deep_link,merchant_image_url,in_stock,merchant_name"
-    "/format/csv/delimiter/%2C/compression/gzip/adultcontent/0/"
-)
-AWIN_COLUMNS = {
-    "id": "aw_product_id", "name": "product_name", "price": "search_price", "url": "aw_deep_link",
-    "image": "merchant_image_url", "stock": "in_stock", "store": "merchant_name",
-}
-
-
 def _col(row, *names):
     low = {k.strip().lower(): v for k, v in row.items() if k}
     for n in names:
@@ -149,42 +137,83 @@ def _col(row, *names):
     return ""
 
 
+def _joined(status):
+    st = status.strip().lower()
+    return st in ("active", "joined", "approved") or ("join" in st and "not" not in st)
+
+
+def _parse_google_feed(text, store):
+    """Catálogo en formato Google (CSV/TSV o XML) → lista normalizada."""
+    items = []
+    if text.lstrip().startswith("<"):
+        import xml.etree.ElementTree as ET
+        root = ET.fromstring(text)
+        for node in root.iter():
+            if node.tag.split("}")[-1] not in ("item", "entry"):
+                continue
+            row = {child.tag.split("}")[-1].lower(): (child.text or "") for child in node}
+            items.append(row)
+    else:
+        delim = csv.Sniffer().sniff(text[:5000], delimiters=",;|\t").delimiter
+        items = [{(k or "").strip().lower(): v for k, v in r.items()}
+                 for r in csv.DictReader(io.StringIO(text), delimiter=delim)]
+    out = []
+    for r in items:
+        pid = (r.get("id") or r.get("aw_product_id") or "").strip()
+        price = to_float(r.get("price") or r.get("search_price"))
+        sale = to_float(r.get("sale_price"))
+        if sale and price and 0 < sale < price:
+            price = sale
+        if not pid or not price or price <= 0:
+            continue
+        avail = (r.get("availability") or r.get("in_stock") or "").strip().lower()
+        out.append({
+            "id": pid,
+            "name": (r.get("title") or r.get("product_name") or "").strip(),
+            "price": price,
+            "url": (r.get("link") or r.get("aw_deep_link") or "").strip(),
+            "image": (r.get("image_link") or r.get("merchant_image_url") or "").strip(),
+            "stock": avail in ("", "1", "true", "yes", "in stock", "in_stock", "instock", "preorder"),
+            "store": store,
+        })
+    return out
+
+
 def read_awin_auto(feed):
     """Lee los catálogos de TODAS las tiendas de Awin que te han aprobado.
 
-    La clave de API se lee de la variable de entorno AWIN_API_KEY (un secreto
-    de GitHub), nunca del archivo de configuración, para que no sea pública.
+    Usa el enlace "Descargar lista" de Awin (Herramientas → Crea-un-feed), que se
+    guarda en el secreto de GitHub AWIN_FEEDLIST_URL y nunca en este repositorio.
     """
-    key = os.environ.get(feed.get("api_key_env", "AWIN_API_KEY"), "").strip()
-    if not key:
-        raise SkipFeed("falta la clave AWIN_API_KEY")
-    lang = feed.get("language", "es")
+    list_url = os.environ.get(feed.get("list_url_env", "AWIN_FEEDLIST_URL"), "").strip()
+    if not list_url:
+        raise SkipFeed("falta el secreto AWIN_FEEDLIST_URL")
+    lang = feed.get("language", "es").lower()
     region = feed.get("region", "ES").upper()
 
-    listing = fetch_text(AWIN_LIST.format(key=key))
-    fids, names = [], []
-    for row in csv.DictReader(io.StringIO(listing)):
-        status = _col(row, "membership status", "membership_status").lower()
-        if status not in ("active", "joined", "approved"):
+    feeds = []
+    for row in csv.DictReader(io.StringIO(fetch_text(list_url))):
+        if not _joined(_col(row, "membership status", "membership_status")):
             continue
         feed_lang = _col(row, "language").lower()
         feed_region = _col(row, "primary region", "primary_region").upper()
-        if feed_lang and not feed_lang.startswith(lang):
+        if lang and feed_lang and not feed_lang.startswith(lang):
             continue
         if region and feed_region and feed_region != region:
             continue
-        fid = _col(row, "feed id", "feed_id")
-        if fid:
-            fids.append(fid)
-            names.append(_col(row, "advertiser name", "advertiser_name"))
-    if not fids:
+        url = _col(row, "url")
+        if url:
+            feeds.append((_col(row, "advertiser name", "advertiser_name") or "Tienda", url))
+    if not feeds:
         raise SkipFeed("ninguna tienda te ha aprobado todavía")
-    log(f"  Awin: {len(fids)} catálogos aprobados ({', '.join(sorted(set(names)))})")
+    log(f"  Awin: {len(feeds)} catálogos aprobados ({', '.join(sorted({n for n, _ in feeds}))})")
 
-    items, cfg = [], dict(feed, columns=AWIN_COLUMNS, delimiter=",")
-    for i in range(0, len(fids), 10):  # de 10 en 10 para no pedir archivos enormes
-        url = AWIN_DOWNLOAD.format(key=key, lang=lang, fids=",".join(fids[i:i + 10]))
-        items += parse_csv(fetch_text(url), cfg)
+    items = []
+    for name, url in feeds:
+        try:
+            items += _parse_google_feed(fetch_text(url), name)
+        except Exception as e:  # una tienda con problemas no para las demás
+            log(f"  {name}: no se pudo leer su catálogo → {e}")
     return items
 
 

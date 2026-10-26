@@ -14,9 +14,9 @@
       "name": "Awin (todas mis tiendas aprobadas)",
       "type": "awin_auto",
       "enabled": true,
-      "api_key_env": "AWIN_API_KEY",
       "language": "es",
-      "region": "ES"
+      "region": "ES",
+      "list_url_env": "AWIN_FEEDLIST_URL"
     },
     {
       "store": "PcComponentes",

@@ -34,7 +34,7 @@ jobs:
 
       - name: Buscar errores de precio
         env:
-          AWIN_API_KEY: ${{ secrets.AWIN_API_KEY }}
+          AWIN_FEEDLIST_URL: ${{ secrets.AWIN_FEEDLIST_URL }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python detector.py
