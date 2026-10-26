@@ -1,0 +1,168 @@
+<title>Precio Roto</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;900&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+/* Layout: feed de alertas tipo etiqueta de precio rota; filtros arriba, tarjetas en rejilla, huecos de anuncio intercalados */
+:root{
+  --bg:#EDF0F3; --surface:#FFFFFF; --ink:#141B26; --muted:#5B6575; --line:#D5DBE3;
+  --sticker:#FFD400; --sticker-ink:#141B26; --hot:#D7263D; --ok:#1E8A5A; --warn:#B7791F;
+  --display:"Big Shoulders Display", Impact, "Arial Narrow", sans-serif;
+  --body:"Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono:"JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0E131B; --surface:#171E29; --ink:#EAF0F7; --muted:#97A3B4; --line:#2A3443;
+  --sticker:#FFD400; --sticker-ink:#141B26; --hot:#FF5A6E; --ok:#3FC48A; --warn:#E3A84A; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0E131B; --surface:#171E29; --ink:#EAF0F7; --muted:#97A3B4; --line:#2A3443;
+  --sticker:#FFD400; --sticker-ink:#141B26; --hot:#FF5A6E; --ok:#3FC48A; --warn:#E3A84A; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.5}
+.wrap{max-width:1120px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 48px;display:flex;flex-direction:column;gap:20px}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px}
+.brand{display:flex;flex-direction:column;gap:2px}
+.logo{font-family:var(--display);font-weight:900;font-size:clamp(40px,8vw,64px);line-height:.9;letter-spacing:.01em;text-transform:uppercase}
+.logo span{background:var(--sticker);color:var(--sticker-ink);padding:0 .12em;display:inline-block;transform:rotate(-2deg)}
+.tag{color:var(--muted);max-width:46ch}
+.live{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:13px;color:var(--muted)}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--hot);animation:pulse 1.6s infinite}
+@keyframes pulse{50%{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.dot{animation:none}}
+.demo{border:1px dashed var(--warn);color:var(--warn);border-radius:8px;padding:8px 12px;font-size:13px}
+.tg{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;background:var(--ink);color:var(--bg);border-radius:12px;padding:16px 18px}
+.tg strong{font-family:var(--display);font-size:24px;letter-spacing:.02em;text-transform:uppercase;display:block;line-height:1.1}
+.tg button{background:var(--sticker);color:var(--sticker-ink);border:0;border-radius:999px;padding:10px 18px;font:700 14px var(--body);cursor:pointer}
+.controls{display:flex;flex-direction:column;gap:12px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:6px 12px;font:600 13px var(--body);cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.row{display:flex;flex-wrap:wrap;gap:16px;align-items:center;font-size:14px;color:var(--muted)}
+.row label{display:flex;align-items:center;gap:8px}
+select,input[type=range]{accent-color:var(--hot);font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:4px 8px}
+output{font-family:var(--mono);color:var(--ink);font-weight:700;min-width:4ch}
+button:focus-visible,select:focus-visible,input:focus-visible,a:focus-visible{outline:2px solid var(--hot);outline-offset:2px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:10px;position:relative;min-width:0}
+.card.gone{opacity:.55}
+.top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.store{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.state{font-size:12px;font-weight:600;border-radius:999px;padding:2px 8px;border:1px solid currentColor}
+.state.on{color:var(--ok)} .state.risk{color:var(--warn)} .state.off{color:var(--muted)}
+.name{font-weight:600;line-height:1.3;text-wrap:balance}
+.prices{display:flex;align-items:flex-end;justify-content:space-between;gap:8px}
+.now{font-family:var(--mono);font-weight:700;font-size:26px;line-height:1;font-variant-numeric:tabular-nums}
+.was{font-family:var(--mono);font-size:13px;color:var(--muted);text-decoration:line-through;font-variant-numeric:tabular-nums}
+.pct{font-family:var(--display);font-weight:900;font-size:30px;line-height:1;background:var(--sticker);color:var(--sticker-ink);padding:4px 8px;border-radius:4px;transform:rotate(3deg)}
+.meta{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);font-family:var(--mono)}
+.meta .fresh{color:var(--hot);font-weight:700}
+.go{display:block;text-align:center;text-decoration:none;background:var(--hot);color:#fff;font-weight:700;border-radius:8px;padding:9px}
+.card.gone .go{background:var(--line);color:var(--muted);pointer-events:none}
+.ad{border:1px dashed var(--line);border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:180px;color:var(--muted);font-size:13px;text-align:center;padding:16px}
+.ad b{font-family:var(--mono);font-size:11px;letter-spacing:.1em}
+.empty{color:var(--muted);padding:24px 0}
+footer{font-size:12px;color:var(--muted);max-width:70ch}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <div class="logo">Precio <span>Roto</span></div>
+      <div class="tag">Errores de precio en tiendas grandes, detectados en cuanto aparecen. Suelen durar minutos.</div>
+    </div>
+    <div class="live"><span class="dot"></span><span id="count">0</span> alertas activas</div>
+  </header>
+
+  <div class="demo" id="demo">Prototipo con datos de ejemplo. Los productos y precios no son reales.</div>
+
+  <div class="tg">
+    <div><strong>Avisos al instante</strong>Recibe cada error de precio en Telegram antes de que lo corrijan.</div>
+    <button type="button" id="tgBtn">Unirme al canal</button>
+  </div>
+
+  <div class="controls">
+    <div class="chips" id="chips" role="group" aria-label="Tiendas"></div>
+    <div class="row">
+      <label for="min">Bajada mínima <input type="range" id="min" min="30" max="90" step="5" value="40"> <output id="minOut">40 %</output></label>
+      <label for="sort">Ordenar
+        <select id="sort"><option value="new">Más recientes</option><option value="pct">Mayor bajada</option><option value="save">Más ahorro en €</option></select>
+      </label>
+      <label><input type="checkbox" id="onlyOn" checked> Ocultar agotados</label>
+    </div>
+  </div>
+
+  <div class="grid" id="grid"></div>
+
+  <footer>Como afiliado, Precio Roto puede recibir una comisión por las compras hechas desde estos enlaces, sin coste extra para ti. Un error de precio no obliga a la tienda a vender: puede cancelar el pedido.</footer>
+</div>
+
+<script>
+const STORES=["Amazon","PcComponentes","MediaMarkt","El Corte Inglés","Carrefour","Fnac","Zalando","Decathlon"];
+const now=Date.now(), m=60000;
+let DEALS=[
+ {s:"Amazon",n:"Robot aspirador con estación de vaciado (ejemplo)",was:499,p:59.99,t:3,st:"on"},
+ {s:"PcComponentes",n:"Monitor gaming 27\" QHD 165 Hz (ejemplo)",was:329,p:32.9,t:7,st:"risk"},
+ {s:"MediaMarkt",n:"Auriculares inalámbricos con cancelación de ruido (ejemplo)",was:279,p:89,t:12,st:"on"},
+ {s:"El Corte Inglés",n:"Cafetera superautomática (ejemplo)",was:649,p:129,t:18,st:"on"},
+ {s:"Carrefour",n:"Pack 24 latas de refresco (ejemplo)",was:16.8,p:1.68,t:25,st:"risk"},
+ {s:"Fnac",n:"Tablet 11\" 128 GB (ejemplo)",was:399,p:149,t:34,st:"on"},
+ {s:"Zalando",n:"Zapatillas de running (ejemplo)",was:140,p:28,t:41,st:"off"},
+ {s:"Decathlon",n:"Bicicleta de montaña 29\" (ejemplo)",was:599,p:199.99,t:52,st:"on"},
+ {s:"Amazon",n:"Disco SSD NVMe 2 TB (ejemplo)",was:159,p:15.9,t:63,st:"off"},
+ {s:"PcComponentes",n:"Teclado mecánico (ejemplo)",was:119,p:47,t:75,st:"on"},
+ {s:"MediaMarkt",n:"Televisor 55\" 4K (ejemplo)",was:699,p:249,t:88,st:"risk"},
+ {s:"Amazon",n:"Freidora de aire 6 L (ejemplo)",was:129,p:39.99,t:96,st:"on"}
+].map((d,i)=>({...d,id:i,at:now-d.t*m}));
+
+let active=new Set(STORES);
+const $=id=>document.getElementById(id);
+const eur=v=>v.toLocaleString("es-ES",{style:"currency",currency:"EUR"});
+const ago=at=>{const x=Math.max(1,Math.round((Date.now()-at)/m));return x<60?`hace ${x} min`:`hace ${Math.floor(x/60)} h ${x%60} min`};
+const STATE={on:["on","Activo"],risk:["risk","Quedan pocas"],off:["off","Agotado"]};
+
+$("chips").innerHTML=STORES.map(s=>`<button type="button" class="chip" aria-pressed="true" data-s="${s}">${s}</button>`).join("");
+$("chips").addEventListener("click",e=>{const b=e.target.closest(".chip");if(!b)return;
+  const s=b.dataset.s; active.has(s)?active.delete(s):active.add(s); b.setAttribute("aria-pressed",active.has(s)); render();});
+["min","sort","onlyOn"].forEach(id=>$(id).addEventListener("input",render));
+$("tgBtn").addEventListener("click",e=>{e.target.textContent="Enlace pendiente de configurar"});
+
+function render(){
+  const min=+$("min").value; $("minOut").textContent=min+" %";
+  let list=DEALS.map(d=>({...d,pct:Math.round((1-d.p/d.was)*100),save:d.was-d.p}))
+    .filter(d=>active.has(d.s)&&d.pct>=min&&!($("onlyOn").checked&&d.st==="off"));
+  const k=$("sort").value;
+  list.sort((a,b)=>k==="pct"?b.pct-a.pct:k==="save"?b.save-a.save:b.at-a.at);
+  $("count").textContent=DEALS.filter(d=>d.st!=="off").length;
+  if(!list.length){$("grid").innerHTML='<p class="empty">No hay errores de precio con estos filtros. Baja el porcentaje mínimo o añade tiendas.</p>';return;}
+  let html=[];
+  const esc=x=>String(x).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  list.forEach((d,i)=>{
+    const [cls,lab]=STATE[d.st]; const fresh=(Date.now()-d.at)<15*m;
+    html.push(`<article class="card ${d.st==="off"?"gone":""}">
+      <div class="top"><span class="store">${d.s}</span><span class="state ${cls}">${lab}</span></div>
+      <div class="name">${esc(d.n)}</div>
+      <div class="prices"><div><div class="was">${eur(d.was)}</div><div class="now">${eur(d.p)}</div></div><div class="pct">−${d.pct}%</div></div>
+      <div class="meta"><span class="${fresh?"fresh":""}">${ago(d.at)}</span><span>ahorras ${eur(d.save)}</span></div>
+      <a class="go" href="${d.url||"#"}" target="_blank" rel="sponsored noopener">${d.st==="off"?"Agotado":"Ver oferta"}</a>
+    </article>`);
+    if(i%4===3) html.push(`<div class="ad"><b>ANUNCIO</b>Espacio publicitario<br>(AdSense u otra red)</div>`);
+  });
+  $("grid").innerHTML=html.join("");
+}
+// Carga las alertas reales del detector (deals.json). Si no existe, usa los ejemplos.
+async function load(){
+  try{
+    const r=await fetch("deals.json?t="+Date.now(),{cache:"no-store"});
+    if(!r.ok) throw 0;
+    const j=await r.json();
+    if(!j.deals||!j.deals.length) throw 0; // aún sin alertas reales: se quedan los ejemplos
+    DEALS=j.deals.map((d,i)=>({...d,id:i}));
+    const extra=[...new Set(DEALS.map(d=>d.s))].filter(s=>!STORES.includes(s));
+    extra.forEach(s=>{STORES.push(s);active.add(s);
+      $("chips").insertAdjacentHTML("beforeend",`<button type="button" class="chip" aria-pressed="true" data-s="${s}">${s}</button>`)});
+    $("demo").hidden=true;
+  }catch(e){}
+  render();
+}
+load(); setInterval(load,60000);
+</script>

@@ -1,0 +1,53 @@
+{
+  "db_path": "precios.db",
+  "output_json": "deals.json",
+  "thresholds": {
+    "min_drop_pct": 50,
+    "min_ref_price": 15,
+    "min_history": 3,
+    "history_days": 14,
+    "realert_hours": 24,
+    "deal_ttl_hours": 48
+  },
+  "feeds": [
+    {
+      "store": "PcComponentes",
+      "enabled": false,
+      "source": "feeds/ejemplo_pccomponentes.csv",
+      "columns": {
+        "id": "aw_product_id",
+        "name": "product_name",
+        "price": "search_price",
+        "url": "aw_deep_link",
+        "image": "merchant_image_url",
+        "stock": "in_stock"
+      }
+    },
+    {
+      "store": "MediaMarkt",
+      "enabled": false,
+      "source": "feeds/ejemplo_mediamarkt.csv",
+      "columns": {
+        "id": "aw_product_id",
+        "name": "product_name",
+        "price": "search_price",
+        "url": "aw_deep_link",
+        "image": "merchant_image_url",
+        "stock": "in_stock"
+      }
+    },
+    {
+      "store": "El Corte Inglés",
+      "enabled": false,
+      "source": "https://productdata.awin.com/datafeed/download/apikey/TU_API_KEY/language/es/fid/ID_FEED/columns/aw_deep_link,product_name,aw_product_id,merchant_image_url,search_price,in_stock/format/csv/delimiter/%2C/compression/gzip/",
+      "columns": {
+        "id": "aw_product_id",
+        "name": "product_name",
+        "price": "search_price",
+        "url": "aw_deep_link",
+        "image": "merchant_image_url",
+        "stock": "in_stock"
+      }
+    }
+  ]
+}

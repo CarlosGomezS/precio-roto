@@ -1,0 +1,38 @@
+name: Detector de errores de precio
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"   # cada 15 minutos (GitHub puede retrasarlo unos minutos)
+  workflow_dispatch:          # botón para lanzarlo a mano
+
+permissions:
+  contents: write
+
+concurrency:
+  group: detector
+  cancel-in-progress: false
+
+jobs:
+  detectar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Buscar errores de precio
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python detector.py
+
+      - name: Guardar historial y alertas
+        run: |
+          git config user.name "precio-roto-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add deals.json
+          [ -f precios.db ] && git add precios.db
+          git diff --cached --quiet || git commit -m "Actualizar alertas"
+          git push
